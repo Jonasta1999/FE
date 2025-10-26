@@ -57,7 +57,7 @@ function useDualRange(initial: [number, number], bounds: [number, number]) {
   return { min, max, setMin, setMax, reset } as const;
 }
 
-/** Dual slider with blue fill between thumbs */
+/** Dual slider with blue fill between thumbs (touch-friendly) */
 function DualSlider({
   min,
   max,
@@ -79,8 +79,7 @@ function DualSlider({
       values={values}
       onChange={(vals) => onChange([vals[0], vals[1]] as [number, number])}
       renderTrack={({ props, children }) => {
-        // strip key before spread (Turbopack warning)
-        const { key: _k, ...rest } = props as any;
+        const { key: _k, ...rest } = props as any; // strip key before spread
         const percentageStart = ((values[0] - min) / (max - min)) * 100;
         const percentageEnd = ((values[1] - min) / (max - min)) * 100;
         return (
@@ -88,7 +87,7 @@ function DualSlider({
             {...rest}
             style={{
               ...rest.style,
-              height: 6,
+              height: 8,
               borderRadius: 9999,
               background: `linear-gradient(
                 to right,
@@ -111,11 +110,11 @@ function DualSlider({
             {...rest}
             style={{
               ...rest.style,
-              width: 14,
-              height: 14,
+              width: 24,
+              height: 24,
               borderRadius: "50%",
               background: "#6ee7ff",
-              boxShadow: "0 0 0 2px #0e0e0f",
+              boxShadow: "0 0 0 3px #0e0e0f",
             }}
           />
         );
@@ -128,13 +127,25 @@ function SmallNumber({ value }: { value: number | string }) {
   return <span className="small-num">{value}</span>;
 }
 
-/** ---------- Genres dropdown (multi-select, no libraries) ---------- */
+/** ---------- Genres dropdown (mobile-first) ---------- */
 
 const GENRE_FALLBACK = [
   "Action","Adventure","Animation","Biography","Comedy","Crime","Documentary","Drama",
   "Family","Fantasy","Film-Noir","History","Horror","Music","Musical","Mystery",
   "Romance","Sci-Fi","Sport","Thriller","War","Western"
 ];
+
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, set] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const fn = () => set(mql.matches);
+    fn();
+    mql.addEventListener?.("change", fn);
+    return () => mql.removeEventListener?.("change", fn);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 function GenresDropdown({
   options,
@@ -149,6 +160,7 @@ function GenresDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const isMobile = useIsMobile();
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -167,7 +179,11 @@ function GenresDropdown({
       </button>
 
       {open && (
-        <div className="gdd-menu" role="listbox" aria-multiselectable>
+        <div className={isMobile ? "gdd-sheet" : "gdd-menu"} role="listbox" aria-multiselectable>
+          <div className="gdd-header">
+            <strong>Genres</strong>
+            <button className="muted small" onClick={() => setOpen(false)}>Close</button>
+          </div>
           <input
             className="gdd-search"
             placeholder="Search…"
@@ -219,7 +235,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
 
   // Genres options: fetched from backend with static fallback
-  const [genreOptions, setGenreOptions] = useState<string[]>([]);
+  const [genreOptions, setGenreOptions] = useState<string[]>(GENRE_FALLBACK);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -302,22 +318,32 @@ export default function Page() {
               value={tconst}
               onChange={(e) => setTconst(e.target.value)}
               placeholder="tconst (tt1234567)"
+              inputMode="text"
+              autoComplete="off"
             />
             <input
               className="text"
               value={primaryTitle}
               onChange={(e) => setPrimaryTitle(e.target.value)}
               placeholder="Title contains"
+              inputMode="text"
+              autoComplete="off"
             />
           </div>
 
           <div className="field">
             <label>Genres</label>
             <GenresDropdown options={genreOptions} value={genres} onChange={setGenres} />
-            <div className="toggle" onClick={() => setApplyAllGenres((v) => !v)}>
-              <input type="checkbox" checked={applyAllGenres} readOnly />
-              <span>Must include all genres</span>
-            </div>
+            <label className="toggle" style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="checkbox"
+                checked={applyAllGenres}
+                onChange={() => setApplyAllGenres((v) => !v)}
+              />
+              <span style={{ display: "inline-flex", alignItems: "center" }}>
+                Must include all genres
+              </span>
+            </label>
           </div>
 
           <div className="field">
@@ -387,7 +413,7 @@ export default function Page() {
               onChange={(e) => setNumVotes(Number(e.target.value))}
               style={{
                 width: "100%",
-                height: "6px",
+                height: "10px",
                 borderRadius: "9999px",
                 appearance: "none",
                 background: `linear-gradient(
@@ -411,8 +437,8 @@ export default function Page() {
               ))}
             </select>
             <div className="spacer" />
-            <button onClick={fetchMovies} disabled={loading}>
-              Generate
+            <button onClick={fetchMovies} disabled={loading} className="primary-btn">
+              {loading ? "Loading…" : "Generate"}
             </button>
             <button
               className="muted"
@@ -438,6 +464,31 @@ export default function Page() {
         {/* RIGHT: Results */}
         <div className="results">
           <h2>Movie Suggestions</h2>
+
+          {/* Card list (shown on mobile) */}
+          <div className="cards" aria-live="polite">
+            {loading && <div className="card center">Loading…</div>}
+            {error && <div className="card error">Error: {error}</div>}
+            {!loading && !error && movies.length === 0 && (
+              <div className="card center">No results</div>
+            )}
+            {movies.map((m) => (
+              <article className="card" key={m.tconst}>
+                <header className="card-head">
+                  <h3 className="card-title">{m.primary_title}</h3>
+                  <div className="pill">{m.start_year ?? "—"}</div>
+                </header>
+                <dl className="meta">
+                  <div><dt>Rating</dt><dd>{m.average_rating ?? "—"}</dd></div>
+                  <div><dt>Length</dt><dd>{m.runtime_minutes != null ? minutesToHHMM(m.runtime_minutes) : "—"}</dd></div>
+                  <div><dt>Genres</dt><dd>{m.genres ?? "—"}</dd></div>
+                  <div><dt>Streaming</dt><dd>{m.providers?.join(", ") ?? "—"}</dd></div>
+                </dl>
+              </article>
+            ))}
+          </div>
+
+          {/* Table (shown from tablet/desktop) */}
           <div className="table-wrap">
             <table>
               <thead>
@@ -485,65 +536,125 @@ export default function Page() {
         </div>
       </section>
 
+      {/* Sticky mobile action bar */}
+      <div className="action-bar">
+        <button onClick={fetchMovies} disabled={loading} className="primary-btn">
+          {loading ? "Loading…" : "Generate"}
+        </button>
+        <button
+          className="muted"
+          onClick={() => {
+            setTconst("");
+            setPrimaryTitle("");
+            setGenres([]);
+            setApplyAllGenres(false);
+            years.reset();
+            runtime.reset();
+            rating.reset();
+            setNumVotes(100000);
+            setLimit(5);
+            setMovies([]);
+            setError(null);
+          }}
+        >
+          Reset
+        </button>
+      </div>
+
       <style jsx global>{`
-        :root { --bg:#0e0e0f; --panel:#161617; --ink:#fff; --muted:#aaa; --line:#2b2b2d; --accent:#6ee7ff; }
-        html, body { background: var(--bg) !important; color: var(--ink) !important; }
-        * { box-sizing: border-box; }
-        .wrap { padding: 16px; }
-        .title { font-size: 24px; margin: 0 0 12px; letter-spacing: 0.2px; }
-        .layout { display: grid; grid-template-columns: 420px 1fr; gap: 20px; align-items: start; }
-        .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
-        .field { margin-bottom: 12px; }
+        :root { --bg:#0e0e0f; --panel:#161617; --ink:#fff; --muted:#b7b7b7; --line:#2b2b2d; --accent:#6ee7ff; }
+        html, body { font-weight: 400; background: var(--bg) !important; color: var(--ink) !important; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        .wrap { padding: 12px; }
+        .title { font-size: 22px; margin: 0 0 12px; letter-spacing: 0.2px; }
+
+        /* Layout: mobile-first */
+        .layout { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+        @media (min-width: 900px) {
+          .layout { grid-template-columns: 380px 1fr; gap: 20px; }
+        }
+
+        .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+        .field { margin-bottom: 14px; }
         .field.inline { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px; align-items: center; }
-        .field label { display: inline-block; font-weight: 600; margin-bottom: 4px; font-size: 13px; }
-        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .text { width: 100%; background: #111; color: #fff; border: 1px solid #444; border-radius: 8px; padding: 6px; font-size: 13px; }
-        .toggle { margin-top: 8px; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; user-select: none; }
-        input[type="checkbox"] { width: 14px; height: 14px; }
-        input[type="range"] { width: 100%; height: 4px; }
-        select { background: #111; color: #fff; border: 1px solid #444; border-radius: 8px; padding: 6px; font-size: 13px; }
-        .actions { display: flex; gap: 8px; }
-        button { background: var(--accent); color: #031b1f; border: none; border-radius: 10px; padding: 8px 12px; font-weight: 700; cursor: pointer; font-size: 13px; }
+        .field label { display: inline-block; font-weight: 400; margin-bottom: 6px; font-size: 14px; }
+        .two-col { display: grid; grid-template-columns: 1fr; gap: 8px; }
+        @media (min-width: 520px) { .two-col { grid-template-columns: 1fr 1fr; } }
+
+        .text { width: 100%; background: #111; color: #fff; border: 1px solid #444; border-radius: 10px; padding: 12px 10px; font-size: 16px; line-height: 1.2; }
+        .text:focus, select:focus, .gdd-btn:focus, .gdd-search:focus { outline: 2px solid #6ee7ff55; outline-offset: 2px; }
+
+        .toggle { margin-top: 10px; display: inline-flex; gap: 10px; align-items: center; user-select: none; font-size: 14px; }
+        input[type="checkbox"] { width: 18px; height: 18px; }
+        input[type="range"] { width: 100%; height: 10px; }
+        select { background: #111; color: #fff; border: 1px solid #444; border-radius: 10px; padding: 10px; font-size: 16px; }
+        button { background: var(--accent); color: #031b1f; border: none; border-radius: 12px; padding: 12px 14px; font-weight: 400; cursor: pointer; font-size: 16px; min-height: 44px; }
         button:disabled { opacity: .6; cursor: default; }
         button.muted { background: #2a2a2c; color: var(--ink); }
+        button.small { padding: 8px 10px; font-size: 14px; min-height: 36px; }
+        .primary-btn { font-weight: 600; }
 
         .results h2 { margin: 0 0 10px; font-size: 18px; }
-        .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+
+        /* Cards for mobile */
+        .cards { display: grid; gap: 10px; }
+        .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+        .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+        .card-title { margin: 0; font-size: 16px; line-height: 1.2; }
+        .pill { padding: 2px 8px; border-radius: 999px; background: #1f1f21; border: 1px solid var(--line); font-size: 12px; }
+        .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; font-size: 14px; }
+        .meta dt { color: var(--muted); font-weight: 600; }
+        .meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+        .card.center { text-align: center; color: var(--muted); }
+        .card.error { color: #ff6b6b; }
+
+        /* Table for larger screens */
+        .table-wrap { display: none; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+        @media (min-width: 900px) { .table-wrap { display: block; } .cards { display: none; } }
         table { width: 100%; border-collapse: collapse; min-width: 800px; }
-        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
-        thead th { background: var(--panel); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+        th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+        thead th { background: var(--panel); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
         tbody tr:nth-child(even) { background: #1f1f21; }
-        .bold { font-weight: 700; }
+        .bold { font-weight: 400; }
         .center { text-align: center; color: var(--muted); }
         .error { color: #ff6b6b; }
 
-        .range { display: grid; gap: 6px; }
+        .range { display: grid; gap: 8px; padding: 4px 2px; }
         .small-num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; margin-left: 6px; }
 
-        /* Genres dropdown styles */
+        /* Genres dropdown styles (mobile sheet) */
         .gdd { position: relative; }
         .gdd-btn {
           width: 100%; background: #111; color: #fff; border: 1px solid #444;
-          border-radius: 8px; padding: 6px 10px; text-align: left; display: flex;
-          justify-content: space-between; align-items: center;
+          border-radius: 10px; padding: 12px 12px; text-align: left; display: flex;
+          justify-content: space-between; align-items: center; font-size: 16px;
         }
         .caret { opacity: .8; }
         .gdd-menu {
-          position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; right: 0;
-          background: #0f0f11; border: 1px solid #333; border-radius: 10px;
+          position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0;
+          background: #0f0f11; border: 1px solid #333; border-radius: 12px;
           box-shadow: 0 10px 30px rgba(0,0,0,.3); padding: 8px;
         }
+        .gdd-sheet {
+          position: fixed; z-index: 60; inset: 0; background: #0f0f11; border-top-left-radius: 16px; border-top-right-radius: 16px;
+          padding: 12px; display: grid; grid-template-rows: auto auto 1fr auto; gap: 8px;
+        }
+        .gdd-header { display: flex; justify-content: space-between; align-items: center; }
         .gdd-search {
           width: 100%; background: #111; color: #fff; border: 1px solid #333;
-          border-radius: 8px; padding: 6px 8px; margin-bottom: 6px;
+          border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; font-size: 16px;
         }
-        .gdd-list { max-height: 220px; overflow: auto; display: grid; gap: 4px; }
-        .gdd-item { display: flex; gap: 8px; align-items: center; padding: 6px 4px; border-radius: 8px; }
+        .gdd-list { max-height: 60vh; overflow: auto; display: grid; gap: 4px; }
+        .gdd-item { display: flex; gap: 10px; align-items: center; padding: 10px 6px; border-radius: 8px; font-size: 16px; }
         .gdd-item:hover { background: #1b1b1e; }
-        .gdd-empty { color: #aaa; font-size: 12px; padding: 8px; text-align: center; }
-        .gdd-actions { display: flex; justify-content: space-between; padding-top: 6px; }
+        .gdd-empty { color: #aaa; font-size: 14px; padding: 8px; text-align: center; }
+        .gdd-actions { display: flex; justify-content: space-between; gap: 8px; padding-top: 6px; }
 
-        @media (max-width: 1024px) { .layout { grid-template-columns: 1fr; } }
+        /* Sticky action bar only on small screens */
+        .action-bar { position: sticky; bottom: 8px; display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 8px; }
+        @media (min-width: 900px) { .action-bar { display: none; } }
+
+        /* Accessibility helpers */
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
       `}</style>
     </main>
