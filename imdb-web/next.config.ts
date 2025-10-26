@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
       // Example: calling /api/movies?q=... on Next -> forwards to FastAPI /movies?q=...
       {
         source: "/api/:path*",
-        destination: "http://localhost:8000/:path*",
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/:path*`,
       },
     ];
   },
