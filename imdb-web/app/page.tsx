@@ -14,6 +14,27 @@ type Movie = {
   providers?: string[] | null; // optional: streaming services
 };
 
+type JWLocale = {
+  slug: string;
+  label: string;
+  path: "movie" | "film";
+};
+
+export const JW_COUNTRIES: JWLocale[] = [
+  { slug: "dk", label: "Denmark", path: "movie" },
+  { slug: "uk", label: "United Kingdom", path: "movie" },
+  { slug: "us", label: "United States", path: "movie" },
+  { slug: "se", label: "Sweden", path: "movie" },
+  { slug: "no", label: "Norway", path: "movie" },
+  { slug: "fr", label: "France", path: "film" },
+];
+
+export function getJWPath(country: string): "movie" | "film" {
+  const match = JW_COUNTRIES.find(c => c.slug === country.toLowerCase());
+  return match ? match.path : "movie"; // default fallback
+}
+
+
 function buildQuery(params: Record<string, unknown>) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -234,6 +255,9 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [country, setCountry] = useState<string>("dk");
+
+
   // Genres options: fetched from backend with static fallback
   const [genreOptions, setGenreOptions] = useState<string[]>(GENRE_FALLBACK);
   useEffect(() => {
@@ -288,12 +312,26 @@ export default function Page() {
   async function fetchMovies() {
     setLoading(true);
     setError(null);
+
     try {
       const res = await fetch(`/api/movies${queryString}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       const data = await res.json();
       const arr: Movie[] = Array.isArray(data) ? data : data?.movies ?? [];
-      setMovies(arr);
+
+      // pick country — you can make this dynamic later
+      const country = "dk";
+
+      // Enrich each movie with providers in parallel
+      const enriched = await Promise.all(
+        arr.map(async (m) => ({
+          ...m,
+          providers: await fetchProviders(m.primary_title, country),
+        }))
+      );
+
+      setMovies(enriched);
     } catch (e: any) {
       setError(e?.message ?? "Unknown error");
       setMovies([]);
@@ -301,6 +339,23 @@ export default function Page() {
       setLoading(false);
     }
   }
+
+  async function fetchProviders(title: string, country: string) {
+    try {
+      const res = await fetch(
+        `/api/streaming?title=${encodeURIComponent(title)}&country=${country}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      console.log(`🎬 ${title} (${country}):`, data.services);
+      return Array.isArray(data.services) ? data.services : [];
+    } catch (err) {
+      console.error(`❌ Failed to fetch providers for ${title}:`, err);
+      return [];
+    }
+  }
+
 
   const votesPct = (numVotes / 500000) * 100; // for single-slider background
 
@@ -345,6 +400,22 @@ export default function Page() {
               </span>
             </label>
           </div>
+
+          <div className="field">
+            <label>Country for streaming services</label>
+            <select
+              className="text"
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+            >
+              {JW_COUNTRIES.map((c) => (
+                <option key={c.slug}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
 
           <div className="field">
             <label>
